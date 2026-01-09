@@ -2,56 +2,100 @@ name: Auto-Renew PythonAnywhere
 
 on:
   schedule:
-    # Run at 04:00 UTC on the 1st and 15th of every month
-    # (Updated for the new 1-month expiry policy)
     - cron: '0 4 1,15 * *'
-  workflow_dispatch: # Allows manual run from GitHub Actions tab
+  workflow_dispatch:
 
 jobs:
   renew_and_keepalive:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Required for the keepalive action to push commits
+      contents: write
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0  # Fetch all history for keepalive to work
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
+      - name: Checkout repository
+        run: |
+          git clone --depth=50 https://github.com/${{ github.repository }}.git .
+          git checkout ${{ github.ref_name }}
+      
+      - name: Setup Python
+        run: |
+          echo "Python version:"
+          python3 --version
+      
       - name: Install dependencies
-        run: pip install requests beautifulsoup4 python-dotenv
-
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install requests beautifulsoup4 python-dotenv
+      
       - name: Run renewal script
         env:
           PA_USERNAME: ${{ secrets.PA_USERNAME }}
           PA_PASSWORD: ${{ secrets.PA_PASSWORD }}
-        run: python renew_python_anywhere.py
-
-      # --- KEEP ALIVE SECTION (DIY - No external action needed) ---
+        run: python3 renew_python_anywhere.py
+      
+      - name: Log workflow run
+        if: always()
+        run: |
+          # Create logs directory if it doesn't exist
+          mkdir -p .github/logs
+          
+          # Create or append to workflow log file
+          LOG_FILE=".github/logs/workflow_runs.log"
+          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          echo "========================================" >> $LOG_FILE
+          echo "Workflow Run: $TIMESTAMP" >> $LOG_FILE
+          echo "Trigger: ${{ github.event_name }}" >> $LOG_FILE
+          echo "Repository: ${{ github.repository }}" >> $LOG_FILE
+          echo "Branch: ${{ github.ref_name }}" >> $LOG_FILE
+          echo "Run ID: ${{ github.run_id }}" >> $LOG_FILE
+          echo "Run Number: ${{ github.run_number }}" >> $LOG_FILE
+          echo "========================================" >> $LOG_FILE
+          echo "" >> $LOG_FILE
+          
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add $LOG_FILE
+          git commit -m "log: workflow run $TIMESTAMP" || echo "No changes to commit"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git push origin ${{ github.ref_name }} || echo "Nothing to push"
+      
       - name: Keep Workflow Alive
         run: |
-          # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Get days since last commit
           LAST_COMMIT=$(git log -1 --format=%ct)
           CURRENT_TIME=$(date +%s)
           DAYS_SINCE=$((($CURRENT_TIME - $LAST_COMMIT) / 86400))
           
           echo "Days since last commit: $DAYS_SINCE"
           
-          # If more than 50 days, make a keepalive commit
           if [ $DAYS_SINCE -gt 50 ]; then
-            echo "Making keepalive commit..."
-            git commit --allow-empty -m "chore: keepalive commit to prevent workflow disable"
-            git push
+            echo "Making keepalive commit with log..."
+            
+            # Create logs directory if it doesn't exist
+            mkdir -p .github/logs
+            
+            # Create or append to workflow log file
+            LOG_FILE=".github/logs/workflow_runs.log"
+            TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            
+            echo "========================================" >> $LOG_FILE
+            echo "Workflow Run: $TIMESTAMP" >> $LOG_FILE
+            echo "Trigger: Keepalive commit (>50 days since last activity)" >> $LOG_FILE
+            echo "Repository: ${{ github.repository }}" >> $LOG_FILE
+            echo "Days since last commit: $DAYS_SINCE" >> $LOG_FILE
+            echo "========================================" >> $LOG_FILE
+            echo "" >> $LOG_FILE
+            
+            # Add and commit the log file
+            git add $LOG_FILE
+            git commit -m "chore: keepalive - workflow run log $TIMESTAMP"
+            git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+            git push origin ${{ github.ref_name }}
+            
+            echo "✅ Keepalive commit created with log entry"
           else
             echo "No keepalive needed yet (threshold: 50 days)"
           fi
