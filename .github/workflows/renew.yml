@@ -31,7 +31,7 @@ jobs:
         env:
           PA_USERNAME: ${{ secrets.PA_USERNAME }}
           PA_PASSWORD: ${{ secrets.PA_PASSWORD }}
-        run: python renew_app.py
+        run: python renew_python_anywhere.py
 
       # --- KEEP ALIVE SECTION (DIY - No external action needed) ---
       - name: Keep Workflow Alive
