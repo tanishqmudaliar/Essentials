@@ -1,0 +1,40 @@
+name: Auto-Renew PythonAnywhere
+
+on:
+  schedule:
+    # Run at 04:00 UTC on the 1st and 15th of every month
+    # (Updated for the new 1-month expiry policy)
+    - cron: '0 4 1,15 * *'
+  workflow_dispatch: # Allows manual run from GitHub Actions tab
+
+jobs:
+  renew_and_keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required for the keepalive action to push commits
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 python-dotenv
+
+      - name: Run renewal script
+        env:
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}
+          PA_PASSWORD: ${{ secrets.PA_PASSWORD }}
+        run: python renew_python_anywhere.py
+
+      # --- KEEP ALIVE SECTION ---
+      - name: Keep Workflow Alive
+        uses: gautamkrishnar/keepalive-workflow@v1
+        with:
+          # If no commits occur for 50 days, this action will push 
+          # an empty commit to keep the schedule active.
+          time_elapsed: 50
